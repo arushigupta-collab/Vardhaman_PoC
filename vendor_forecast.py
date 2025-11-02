@@ -10,6 +10,8 @@ import argparse
 from pathlib import Path
 from functools import lru_cache
 import os
+import subprocess
+import sys
 from typing import Iterable
 
 import pandas as pd
@@ -95,7 +97,6 @@ def _ensure_regressors(frame: pd.DataFrame) -> Iterable[str]:
 def ensure_cmdstan() -> str:
     """Install CmdStan if needed and point Prophet to it."""
     import cmdstanpy
-    cwd = os.getcwd()
 
     try:
         current = cmdstanpy.cmdstan_path()
@@ -106,9 +107,17 @@ def ensure_cmdstan() -> str:
         pass
 
     try:
-        cmdstanpy.install_cmdstan()
-    finally:
-        os.chdir(cwd)
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import cmdstanpy; cmdstanpy.install_cmdstan()",
+            ],
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError("CmdStan installation failed") from exc
+
     current = cmdstanpy.cmdstan_path()
     if not current or not Path(current, "bin", "stanc").exists():
         raise RuntimeError("CmdStan installation failed; Prophet cannot run.")
