@@ -162,6 +162,7 @@ The app uses Streamlit caching to avoid retraining models needlessly; changing t
    - `vendor_market_data.csv`, `vendor_master.csv`
    - `requirements.txt` (Python dependencies)
    - `packages.txt` (system packages for Prophet/CmdStan build toolchain)
+   - `runtime.txt` (pins Python 3.11 on Streamlit Cloud)
 2. **Sign in to [share.streamlit.io](https://share.streamlit.io/)** and choose **“New app”**.
 3. Select your repo, branch, and set **Main file path** to `streamlit_app.py`.
 4. Deploy. The first build installs system packages plus Python requirements, then compiles CmdStan—expect the initial run to take up to ~10 minutes. Subsequent restarts reuse the cached toolchain.
