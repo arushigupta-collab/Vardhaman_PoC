@@ -95,6 +95,7 @@ def _ensure_regressors(frame: pd.DataFrame) -> Iterable[str]:
 def ensure_cmdstan() -> str:
     """Install CmdStan if needed and point Prophet to it."""
     import cmdstanpy
+    cwd = os.getcwd()
 
     try:
         current = cmdstanpy.cmdstan_path()
@@ -104,7 +105,10 @@ def ensure_cmdstan() -> str:
     except Exception:
         pass
 
-    cmdstanpy.install_cmdstan()
+    try:
+        cmdstanpy.install_cmdstan()
+    finally:
+        os.chdir(cwd)
     current = cmdstanpy.cmdstan_path()
     if not current or not Path(current, "bin", "stanc").exists():
         raise RuntimeError("CmdStan installation failed; Prophet cannot run.")
