@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from functools import lru_cache
+import os
 from typing import Iterable
 
 import pandas as pd
@@ -89,11 +91,35 @@ def _ensure_regressors(frame: pd.DataFrame) -> Iterable[str]:
     return REGRESSORS
 
 
+@lru_cache(maxsize=1)
+def ensure_cmdstan() -> str:
+    """Install CmdStan if needed and point Prophet to it."""
+    import cmdstanpy
+
+    try:
+        current = cmdstanpy.cmdstan_path()
+        if current and Path(current, "bin", "stanc").exists():
+            os.environ.setdefault("CMDSTAN", current)
+            return current
+    except Exception:
+        pass
+
+    cmdstanpy.install_cmdstan()
+    current = cmdstanpy.cmdstan_path()
+    if not current or not Path(current, "bin", "stanc").exists():
+        raise RuntimeError("CmdStan installation failed; Prophet cannot run.")
+
+    os.environ["CMDSTAN"] = current
+    return current
+
+
 def forecast_vendor_prices(
     market: pd.DataFrame,
     target_year: int,
     min_horizon: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ensure_cmdstan()
+
     required_regressors = tuple(_ensure_regressors(market))
 
     market = market.copy()
