@@ -10,17 +10,11 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from vendor_forecast import load_data, forecast_vendor_prices, ensure_cmdstan
+from vendor_forecast import load_data, forecast_vendor_prices
 
 
 MARKET_PATH = Path("vendor_market_data.csv")
 MASTER_PATH = Path("vendor_master.csv")
-
-
-@st.cache_resource(show_spinner=True)
-def initialize_cmdstan() -> bool:
-    ensure_cmdstan()
-    return True
 
 
 @st.cache_data(show_spinner=False)
@@ -28,13 +22,12 @@ def get_market_data() -> pd.DataFrame:
     return load_data(MARKET_PATH, MASTER_PATH)
 
 
-@st.cache_data(show_spinner=True)
-def get_predictions(target_year: int, horizon: int) -> pd.DataFrame:
-    market = get_market_data()
-    predictions, _ = forecast_vendor_prices(
-        market=market, target_year=target_year, min_horizon=horizon
-    )
-    return predictions
+@st.cache_data(show_spinner=False)
+def load_cached_forecasts() -> pd.DataFrame | None:
+    precomputed_path = Path("vendor_forecasts.csv")
+    if precomputed_path.exists():
+        return pd.read_csv(precomputed_path)
+    return None
 
 
 def main() -> None:
@@ -65,13 +58,50 @@ def main() -> None:
         )
         top_k = st.slider("Vendors to display", min_value=1, max_value=20, value=5)
 
-    initializing = initialize_cmdstan()
-
     try:
-        predictions = get_predictions(target_year, horizon)
+        market = get_market_data()
+        predictions, _ = forecast_vendor_prices(
+            market=market, target_year=target_year, min_horizon=horizon
+        )
+        fallback_used = False
     except Exception as exc:  # noqa: BLE001
-        st.error(f"Forecast failed: {exc}")
-        st.stop()
+        precomputed = load_cached_forecasts()
+        if precomputed is None:
+            st.error(
+                "Forecast failed to run in the cloud environment and no precomputed results "
+                "are available. Please try again later or compute forecasts locally."
+            )
+            st.stop()
+        predictions = (
+            precomputed.loc[precomputed["year"] == target_year]
+            .rename(
+                columns={
+                    "yhat": "predicted_price",
+                    "yhat_lower": "predicted_low",
+                    "yhat_upper": "predicted_high",
+                }
+            )
+            .copy()
+        )
+        predictions["forecast_year"] = target_year
+        predictions = predictions.merge(
+            market[["vendor_id", "vendor_name", "vendor_country", "region"]]
+            .drop_duplicates("vendor_id"),
+            on="vendor_id",
+            how="left",
+        )
+        predictions = predictions.sort_values("predicted_price", ascending=True)
+        fallback_used = True
+        if predictions.empty:
+            st.error(
+                "Forecasting is unavailable for the selected year in this hosted environment."
+                " Please choose a year covered by the precomputed dataset or run the CLI locally."
+            )
+            st.stop()
+        st.warning(
+            f"Live Prophet training is unavailable (reason: {exc}). Showing precomputed "
+            "forecasts instead."
+        )
 
     if predictions.empty:
         st.warning("No forecasts available for the selected parameters.")
