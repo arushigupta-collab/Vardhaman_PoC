@@ -10,11 +10,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from vendor_forecast import load_data, forecast_vendor_prices
+from vendor_forecast import load_data, forecast_vendor_prices, ensure_cmdstan
 
 
 MARKET_PATH = Path("vendor_market_data.csv")
 MASTER_PATH = Path("vendor_master.csv")
+
+
+@st.cache_resource(show_spinner=True)
+def initialize_cmdstan() -> bool:
+    ensure_cmdstan()
+    return True
 
 
 @st.cache_data(show_spinner=False)
@@ -58,6 +64,8 @@ def main() -> None:
             value=5,
         )
         top_k = st.slider("Vendors to display", min_value=1, max_value=20, value=5)
+
+    initializing = initialize_cmdstan()
 
     try:
         predictions = get_predictions(target_year, horizon)
