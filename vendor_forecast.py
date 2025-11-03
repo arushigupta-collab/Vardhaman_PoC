@@ -10,8 +10,6 @@ import argparse
 from pathlib import Path
 from functools import lru_cache
 import os
-import subprocess
-import sys
 from typing import Iterable
 
 import pandas as pd
@@ -104,26 +102,24 @@ def ensure_cmdstan() -> str:
             os.environ.setdefault("CMDSTAN", current)
             return current
     except Exception:
-        pass
+        current = None
 
+    cwd = Path.cwd()
     try:
-        subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import cmdstanpy; cmdstanpy.install_cmdstan()",
-            ],
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError("CmdStan installation failed") from exc
+        cmdstanpy.install_cmdstan()
+    finally:
+        os.chdir(cwd)
 
-    current = cmdstanpy.cmdstan_path()
-    if not current or not Path(current, "bin", "stanc").exists():
-        raise RuntimeError("CmdStan installation failed; Prophet cannot run.")
+    cmdstan_home = Path.home() / ".cmdstan"
+    candidates = sorted(cmdstan_home.glob("cmdstan-*"), reverse=True)
+    for candidate in candidates:
+        stanc_bin = Path(candidate, "bin", "stanc")
+        if stanc_bin.exists():
+            cmdstanpy.set_cmdstan_path(str(candidate))
+            os.environ["CMDSTAN"] = str(candidate)
+            return str(candidate)
 
-    os.environ["CMDSTAN"] = current
-    return current
+    raise RuntimeError("CmdStan installation failed; Prophet cannot run.")
 
 
 def forecast_vendor_prices(
