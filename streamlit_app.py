@@ -6,6 +6,7 @@ Streamlit app to forecast cotton prices and recommend top vendors for a selected
 from __future__ import annotations
 
 from pathlib import Path
+import os
 
 import pandas as pd
 import streamlit as st
@@ -58,18 +59,17 @@ def main() -> None:
         )
         top_k = st.slider("Vendors to display", min_value=1, max_value=20, value=5)
 
-    try:
-        market = get_market_data()
-        predictions, _ = forecast_vendor_prices(
-            market=market, target_year=target_year, min_horizon=horizon
-        )
-        fallback_used = False
-    except Exception as exc:  # noqa: BLE001
+    market = get_market_data()
+    running_on_streamlit_cloud = os.environ.get("STREAMLIT_RUNTIME") == "streamlit-runtime"
+    fallback_used = False
+
+    if running_on_streamlit_cloud:
         precomputed = load_cached_forecasts()
         if precomputed is None:
             st.error(
-                "Forecast failed to run in the cloud environment and no precomputed results "
-                "are available. Please try again later or compute forecasts locally."
+                "This hosted app relies on precomputed forecasts, but none were found. "
+                "Please compute forecasts locally (see README) or provide an updated "
+                "`vendor_forecasts.csv`."
             )
             st.stop()
         predictions = (
@@ -98,6 +98,42 @@ def main() -> None:
                 " Please choose a year covered by the precomputed dataset or run the CLI locally."
             )
             st.stop()
+    else:
+        try:
+            predictions, _ = forecast_vendor_prices(
+                market=market, target_year=target_year, min_horizon=horizon
+            )
+        except Exception as exc:  # noqa: BLE001
+            precomputed = load_cached_forecasts()
+            if precomputed is None:
+                st.error(f"Forecast failed: {exc}")
+                st.stop()
+            predictions = (
+                precomputed.loc[precomputed["year"] == target_year]
+                .rename(
+                    columns={
+                        "yhat": "predicted_price",
+                        "yhat_lower": "predicted_low",
+                        "yhat_upper": "predicted_high",
+                    }
+                )
+                .copy()
+            )
+            predictions["forecast_year"] = target_year
+            predictions = predictions.merge(
+                market[["vendor_id", "vendor_name", "vendor_country", "region"]]
+                .drop_duplicates("vendor_id"),
+                on="vendor_id",
+                how="left",
+            )
+            predictions = predictions.sort_values("predicted_price", ascending=True)
+            fallback_used = True
+            if predictions.empty:
+                st.error(
+                    "Forecasting is unavailable for the selected year. "
+                    "Please choose a year covered by the precomputed dataset."
+                )
+                st.stop()
 
     if predictions.empty:
         st.warning("No forecasts available for the selected parameters.")
