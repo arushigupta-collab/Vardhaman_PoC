@@ -98,10 +98,6 @@ def main() -> None:
                 " Please choose a year covered by the precomputed dataset or run the CLI locally."
             )
             st.stop()
-        st.warning(
-            f"Live Prophet training is unavailable (reason: {exc}). Showing precomputed "
-            "forecasts instead."
-        )
 
     if predictions.empty:
         st.warning("No forecasts available for the selected parameters.")
